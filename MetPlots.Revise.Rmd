@@ -1,0 +1,438 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r libs,eval=TRUE, include=FALSE}
+library(tidyverse)
+library(DESeq2)
+library(purrr)
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+library(pheatmap)
+library(SummarizedExperiment)
+library(knitr)
+library(reshape2)
+library(limma)
+library(edgeR)
+library(PCAtools)
+```
+
+
+```{r data, eval=TRUE, include=FALSE}
+gse2 <- readRDS(file = "/Users/U1006746/Desktop/counts.AK.output/dds_met_gene_counts.rds")
+list <- c()
+```
+
+```{r filter, eval=TRUE, include=FALSE}
+#filter out genes (must have more than 2 counts) >= 3???
+keepIt <- rowSums(cpm(gse2) > 10) >= 300
+sumexp <- gse2[keepIt,]
+
+gene_info <- as.data.frame(rowData(sumexp)@listData)
+assay_info <- as.data.frame(assay(sumexp))
+sample_info <- as.data.frame(colData(sumexp)@listData)
+
+#filtered out 1000 (Not assessed for age)
+sample_info <- sample_info%>%
+  filter(Age != 1000)
+
+#updating SE for ages we want to keep
+ages <- sample_info$Run
+sumexp <- sumexp[ ,ages]
+
+sample_info <- as.data.frame(colData(sumexp)@listData)
+gene_info <- as.data.frame(rowData(sumexp)@listData)
+assay_info <- as.data.frame(assay(sumexp))
+gene_info$external_gene_name <- ifelse(is.na(gene_info$external_gene_name), gene_info$GENEID, gene_info$external_gene_name)
+gene_info$external_gene_name <- ifelse(gene_info$external_gene_name == "", gene_info$GENEID, gene_info$external_gene_name)
+sample_info <- sample_info[ ,-c(3:30)]
+sample_info <- sample_info[ ,-c(4:8)]
+sample_info <- sample_info[ ,-c(18:19)]
+
+#format dataset to lower and make new body column for all randomness
+sample_info <- sample_info %>%
+  dplyr::mutate(body_site = tolower(body_site),
+                PRIMARY_TUMOR_LOCATION = tolower(PRIMARY_TUMOR_LOCATION))
+
+sample_info$BODY_SITE <- str_extract(sample_info$body_site, "^[^\\s_]+")
+sample_info$PRIMARY_TUMOR_LOCATION <- str_extract(sample_info$PRIMARY_TUMOR_LOCATION, "^[^\\s_]+")
+sample_info$BODY_SITE <- ifelse(sample_info$BODY_SITE == "abdomen", "abdominal", sample_info$BODY_SITE)
+sample_info$PRIMARY_TUMOR_LOCATION <- ifelse(sample_info$PRIMARY_TUMOR_LOCATION == "abdomen", "abdominal", sample_info$PRIMARY_TUMOR_LOCATION)
+
+#updating sumexp object 
+sumexp$BODY_SITE <- sample_info$BODY_SITE
+sumexp$PRIMARY_TUMOR_LOCATION <- sample_info$PRIMARY_TUMOR_LOCATION
+
+#table data 
+age <- sumexp$Age
+patient <- sumexp$submitted_subject_id
+body_site <- sumexp$BODY_SITE
+gender <- sumexp$Gender
+tumor <- sumexp$PRIMARY_METASTATIC_TUMOR
+prim_location <- sumexp$PRIMARY_TUMOR_LOCATION
+table(patient, gender, body_site, age, tumor)
+
+```
+
+```{r}
+sumexp3 <- sumexp
+assay(sumexp3) <- log2(cpm(assay(sumexp3)) + 1)
+assaySumE3_info <- as.data.frame(assay(sumexp3))
+```
+
+```{r}
+#rid of dups
+plottingMET_data <- data.frame(subject = sumexp3$submitted_subject_id,
+                           sample = sumexp3$Run,
+                           body = sumexp3$BODY_SITE,
+                           gene_expression = colSums(assays(sumexp3)$counts),
+                           tumor = sumexp3$PRIMARY_METASTATIC_TUMOR,
+                           prim_loc = sumexp3$PRIMARY_TUMOR_LOCATION,
+                           age = sumexp3$Age,
+                           sex = sumexp3$Gender,
+                           hist = sumexp3$HISTOLOGICAL_TYPE)
+
+plottingMETFilt <- plottingMET_data[!duplicated(plottingMET_data[c("subject", "body","tumor","prim_loc","age","sex","hist")]), ]
+rows <- rownames(plottingMETFilt)
+
+plottingMETFilt$prim_loc <- factor(plottingMETFilt$prim_loc)
+
+#updatin no dups for sumexp
+sumexp <- sumexp[ ,rows]
+sample_info <- as.data.frame(colData(sumexp)@listData)
+```
+
+```{r}
+library(tidySummarizedExperiment)
+sumexp3 <- sumexp3 %>%
+  group_by(PRIMARY_TUMOR_LOCATION)
+#sumexp3 <- sumexp3[, -c(7:45)]
+
+sumexp3<- sumexp3 %>%
+  filter(.sample %in% rows)
+
+sumexp3$.sample <- factor(sumexp3$.sample, levels = unique(sumexp3$.sample[order(sumexp3$Gender)]))
+#sumexp3$Age <- as.integer(sumexp3$Age)
+sumexp3$.sample <- factor(sumexp3$.sample, levels = unique(sumexp3$.sample[order(sumexp3$PRIMARY_TUMOR_LOCATION)]))
+
+```
+
+Summary of Data:
+
+* 1145 samples, not paired 
+* 1070 Metastatic sites and 71 Primary sites
+* 1132 subjects
+* focus on just Metastatic sites
+
+
+**Plots**
+```{r}
+plottingMETFilt %>% 
+  filter(!tumor %in% c("NA","Primary")) %>%
+  group_by(body) %>%
+  summarise(count = n())
+```
+
+
+```{r}
+ggthemr("light")
+plottingMETFilt %>%
+  filter(!tumor %in% c("NA","Primary"),
+         body %in% c("bone", "brain", "abdominal", "chest","pelvic", "liver")) %>%
+  ggplot(aes(x = body)) +
+  geom_bar()+
+  xlab("Tumor Site") +
+  ylab("Number of Samples") +
+  ggtitle("Number of Metastatic Tumor Samples per Body Site") 
+
+
+ggsave('barplot_liver_.png', width = 8, height = 8)
+```
+**Fig 1a. Looking at the number of samples per metastatic tumor sites, these were picked as total samples over 20. I chose to investigate liver metastatic tumors it has the highest number of samples.**
+
+
+```{r}
+ggthemr("dust")
+plottingMETFilt %>%
+  filter(!tumor %in% c("NA","Primary"),
+         body == "liver",
+         prim_loc %in% c("bile", "esophagus", "prostate", "breast", "lung")) %>%
+  ggplot(aes(x = prim_loc)) +
+  geom_bar(aes(fill = sex))+
+  xlab("Primary Tumor Site (of Liver Met)") +
+  ylab("Number of Samples") +
+  ggtitle("Number of Liver Metastatic Samples per Primary Tumor Body Site")
+
+ggsave('barplotGENDEr_liver_.png', width = 8, height = 8)
+
+```
+**Fig 1b. Investigates how gender is distributed across two primary tumor locations for liver metastasized tumors. There is similar distribution of males in females in each primary tumor location for esophagus and bile and similar sample sizes so I picked these to investigate.**
+
+```{r}
+
+ggthemr("grape")
+sumexp3$.sample <- factor(sumexp3$.sample, levels = unique(sumexp3$.sample[order(sumexp3$PRIMARY_TUMOR_LOCATION)]))
+
+
+sumexp3 %>%
+filter(BODY_SITE == "liver",
+       PRIMARY_TUMOR_LOCATION %in% c("bile", "esophagus"),
+       PRIMARY_METASTATIC_TUMOR == "Metastatic") %>%
+ ggplot(aes(x = .sample, y = counts, fill = PRIMARY_TUMOR_LOCATION)) +
+  geom_boxplot()+
+  ggtitle("Distribution of Gene Expression per Sample ")+
+  xlab("Sample") +
+  ylab("Gene Expression (log, CPM)") +
+  labs(fill = "Primary Tumor") +
+  theme(legend.text = element_text(size = 6))+
+  coord_flip() 
+
+ggsave('boxplot_liver_GE.png', width = 8, height = 10)
+
+```
+
+**Fig 2. Looking at gene expression in counts per million to account for size and its distribution for each of the liver metastatic body site samples. Filled by primary tumor location either bile ducts or esophagus. We see ever so slightly esophagus have a little higher median gene expression, is it significant? **
+
+```{r}
+
+ggthemr("light")
+plottingMETFilt %>%
+  filter(!tumor %in% c("NA","Primary"),
+         body == "liver",
+         prim_loc %in% c("bile", "esophagus")) %>%
+  ggplot(aes(x = prim_loc, y = gene_expression)) +
+  geom_boxplot(position = "dodge") +
+  labs(x = "Gender", y = "Total Gene Expression (log/CPM)", color = "Tumor Type") +
+  ggtitle("Total Gene Expression Across Primary Tumor Locations")+
+  geom_text(data = plottingMETFilt %>% 
+              filter(!tumor %in% c("NA","Primary"),body == "liver",prim_loc %in% c("bile", "esophagus")) %>%
+              group_by(prim_loc) %>% 
+              summarise(top = max(gene_expression), 
+                        n=n()),
+            aes(x= prim_loc, y=0, label= paste0("n = ", n)), 
+            size = 3.5, fontface = "bold", vjust = -2
+             )
+
+ggsave('boxplotTOTAL_liver_.png', width = 8, height = 8)
+
+```
+**Fig 3. Total gene expression in counts per million (to account for size) and log transformed (for visualization purposes) for all liver metastatic tumors samples. It is comparing the expression between from bile vs esophagus primary tumors and esophagus is slightly higher. They do have comparable sample sizes (31 total samples for this subset).**
+
+
+```{r}
+#subset just no duplicates abdonimal
+samp_info_absMET <- sample_info %>%
+  filter(BODY_SITE == "liver", 
+         PRIMARY_METASTATIC_TUMOR == "Metastatic",
+         PRIMARY_TUMOR_LOCATION %in% c("bile", "esophagus"))
+keep <- samp_info_absMET$Run
+sumexpAbs <- sumexp[ ,keep]
+
+#dds is filtered for this subset question with only primary tumor locations bein bile and esophagus 
+assays(sumexpAbs)$counts <- round(assays(sumexpAbs)$counts)
+dds2 <- DESeqDataSet(sumexpAbs, design = ~ PRIMARY_TUMOR_LOCATION)
+dds2$PRIMARY_TUMOR_LOCATION <- factor(dds2$PRIMARY_TUMOR_LOCATION, levels = c("bile","esophagus"))
+
+vsd2 <- vst(dds2, blind = TRUE)
+p2 <- pca(assay(vsd2), metadata = colData(vsd2), removeVar = 0.1)
+biplot(p2, colby = "PRIMARY_TUMOR_LOCATION", lab = NULL, legendPosition = 'right', legendTitleSize = 8, legendLabSize = 8, title = "PCA of Bile vs Esophagus Tumors" )
+ggsave('metpcas.png', width = 8, height = 5)
+```
+
+**Fig 4. The PCA shows some distinction between primary tumor locations, however there is some mixing.**
+
+```{r}
+#DESeq DE
+#using medain-of-ratio method to normalize
+#estimate size factor for dds
+dds2 = estimateSizeFactors(dds2)
+
+#estimating dispersion
+dds2 = estimateDispersions(dds2)
+
+#test
+dds2 = nbinomWaldTest(dds2)
+contrast1 <- c("PRIMARY_TUMOR_LOCATION", "bile", "esophagus")
+resDESeq2 = results(dds2, contrast = contrast1)
+
+resDESeq2 <- resDESeq2[order(resDESeq2$padj),]
+head(resDESeq2)
+#summary of <0.05 p-value
+summary(resDESeq2, alpha = 0.05)
+
+
+#just sig genes
+padj.cutoff <- 0.05
+sigRes4 <- resDESeq2 %>%
+        data.frame() %>%
+        filter(padj < padj.cutoff) %>%
+        rownames_to_column(var = "gene")
+sigRes4 <- left_join(sigRes4, gene_info, by = c("gene" = "GENEID"))
+rownames(sigRes4) <- sigRes4$gene
+sigRes4 <- sigRes4[,-1]
+
+
+#results and gene names no filter
+sigRes_all <- resDESeq2 %>%
+        data.frame() %>%
+        rownames_to_column(var = "gene")
+sigRes_all <- left_join(sigRes_all, gene_info, by = c("gene" = "GENEID"))
+rownames(sigRes_all) <- sigRes_all$gene
+sigRes_all <- sigRes_all[,-1]
+
+#filter for heatmap
+# sigRes_fil2 <- sigRes_all[(sigRes_all$baseMean > 150) & abs(sigRes_all$log2FoldChange > 2),]
+# summary(sigRes_fil2, alpha > 0.05)
+```
+
+```{r}
+# GenesSigRes <- sigRes_all %>%
+#   filter(padj <= 0.05,
+#          log2FoldChange >= 1 | log2FoldChange<= -1) %>%
+#   select(padj, log2FoldChange, external_gene_name)
+```
+
+**V. Volcano Plot**
+```{r}
+select = c("CDCA5","HMGA1", "BRI3BP", "UBE2S", "KIAA0903", "TSPAN5", "FGFR4", "GK5","GASK1A", "ADPRM","MED12L","MYH11","ACTG2", "PRDM8", "MED12L", "ZNF594", "PRDM8")
+
+#for aurora select_cool <- c("PTGS2", "CDC37", "CDC34","CDCA5", "NLRP2","PPBP","PLAUR", "MCEMP1")
+select_cool <- c("ACTG2","MED12L", "UBE2S", "CDCA5", "H2AX", "BIRC5", "TK1", "GINS2")
+ggthemr("grape")
+
+EnhancedVolcano(toptable = sigRes_all,
+                x = "log2FoldChange",
+                y = "padj",
+                lab = sigRes_all$external_gene_name,
+                select = select_cool,
+                boxedLabels = TRUE,
+                drawConnectors = TRUE,
+                widthConnectors = 1.0,
+                colConnectors = 'black',
+                pCutoff = .05,
+                FCcutoff = 1)
+
+
+
+ggsave('Met_volcano_plot.png', width = 15, height = 10)
+```
+**Fig 5. Shows genes in red that both have "significant" differences between the two and have distinct unregulated or downregulated log fold changes (how much gene is expressed).**
+
+
+```{r}
+#getting sample info
+DDS2sample_info <- as.data.frame(colData(dds2))
+
+#getting genes
+genes.kept <- sigRes4[sigRes4$external_gene_name %in% select_cool, ]
+genes.kept <- rownames(genes.kept)
+
+#getting counts/treatment/gene names situated
+count.table <- counts(dds2, normalized=T)[genes.kept, ]
+cols <- colnames(count.table)
+DDS2sample_info <- DDS2sample_info %>%
+  filter(rownames(DDS2sample_info) %in% cols)
+colnames(count.table) = paste(DDS2sample_info$PRIMARY_TUMOR_LOCATION, colnames(count.table), sep = " : ")
+
+#gene id names
+count.table <- count.table %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene")
+count.table <-  left_join(count.table, gene_info, by = c("gene" = "GENEID"))
+rownames(count.table) <- count.table$external_gene_name
+count.table <- count.table[,-33]
+count.table <- count.table[,-1]
+
+#heatmap z scores
+count.table.z <- t(apply(count.table, 1, scale))
+colnames(count.table.z) <- colnames(count.table)
+
+#colors
+
+myCols2 <- c("bile : SRR4307033", "bile : SRR4307364","bile : SRR4306923","bile : SRR4307368",
+             "esophagus : SRR8762949","esophagus : SRR8762945","esophagus : SRR8762960",
+             "esophagus : SRR8762529","esophagus : SRR8763004","bile : SRR4306880","bile : SRR4305807")
+row_idx2 <- which(colnames(count.table.z) %in% myCols2)
+
+
+fontcolors <- rep('grey', ncol(count.table.z))
+fontcolors[1] <- "#0000FF"
+fontcolors[10] <- "#0000FF" #bile
+fontcolors[11] <- "#DC143C" #esophaguse
+fontcolors[12] <- "#0000FF" #bile
+fontcolors[14] <- "#0000FF"  #bile
+fontcolors[15] <- "#0000FF" #bile
+fontcolors[21] <- "#DC143C" #esophagus
+fontcolors[26] <- "#DC143C" #esophagus
+fontcolors[11] <- "#0000FF" #bile
+fontcolors[27] <- "#DC143C" #esophagus
+fontcolors[28] <- "#DC143C" #esophagus
+fontcolors[29] <- '#DC143C' #esophagus
+
+ fontcolors_rows <- rep('black', nrow(count.table.z))
+ fontcolors_rows[1] <-  "#DC143C" #esophagus
+ fontcolors_rows[2] <- "#0000FF"
+ fontcolors_rows[4] <- "#0000FF"
+ fontcolors_rows[5] <- "#0000FF"
+ fontcolors_rows[3] <- "#DC143C"
+ fontcolors_rows[7] <- "#0000FF"
+ fontcolors_rows[8] <- "#0000FF"
+  fontcolors_rows[6] <- "#0000FF"
+ # fontcolors_rows[5] <- "#0000FF"
+ # fontcolors_rows[6] <- "#DC143C"
+ # fontcolors_rows[7] <- "#DC143C"
+ # fontcolors_rows[8] <- "#DC143C"
+ # fontcolors_rows[9] <- "#DC143C"
+ # fontcolors_rows[12] <- "#DC143C"
+ # fontcolors_rows[14] <- "#DC143C"
+
+#heatmap
+h4 <- Heatmap(count.table.z, cluster_rows = T, column_labels = colnames(count.table.z), name = "Z-score", row_labels = rownames(count.table.z),
+              column_names_gp = gpar(col = fontcolors, fontface = "bold"),
+             row_names_gp = gpar(col = fontcolors_rows, fontface = "bold"))
+
+```
+
+```{r printing heatmap, echo=FALSE}
+png("heatmap_MET.png", res = 250, width = 4000, height = 2000)
+print(h4)
+dev.off()
+```
+
+**Fig 6. Tend to be specific unregulated genes in esophagus vs bile. For example CDK5 is upregulted in bile duct cancers and not in esophagus. **
+
+GSEA
+
+```{r}
+#ordered results table
+
+resDESeq_gse <- resDESeq_names %>%
+  filter(!grepl("^ENSG",external_gene_name)) %>%
+  rownames_to_column(var = "geneID")
+resDESeq_gse <- resDESeq_gse %>%
+  mutate(geneID = str_replace(geneID,"\\..*$", ""))
+rownames(resDESeq_gse) <- resDESeq_gse$geneID
+resDESeq_gse <- resDESeq_gse[,-1]
+```
+
+```{r}
+gene_list <- resDESeq_gse$stat
+names(gene_list) <- rownames(resDESeq_gse)
+gene_list<- na.omit(gene_list)
+gene_list = sort(gene_list,decreasing = TRUE)
+gene_list
+```
+
+```{r}
+aurora_gse <- gseGO(gene_list,
+                    ont = "BP",
+                    keyType = "ENSEMBL",
+                    OrgDb = "org.Hs.eg.db",
+                    eps = 1e-300)
+
+as.data.frame(aurora_gse)
+
+```
+
+

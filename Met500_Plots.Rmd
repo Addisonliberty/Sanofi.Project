@@ -1,0 +1,417 @@
+---
+title: "Met500 Plots"
+output: html_notebook
+---
+
+```{r libs,eval=TRUE, include=FALSE}
+library(tidyverse)
+library(DESeq2)
+library(purrr)
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+library(pheatmap)
+library(SummarizedExperiment)
+library(knitr)
+library(reshape2)
+library(limma)
+library(edgeR)
+library(PCAtools)
+```
+
+
+```{r data, eval=TRUE, include=FALSE}
+gse2 <- readRDS(file = "/Users/U1006746/Desktop/counts.AK.output/dds_met_gene_counts.rds")
+list <- c()
+```
+
+```{r filter, eval=TRUE, include=FALSE}
+#filter out genes (must have more than 2 counts) >= 3???
+keepIt <- rowSums(cpm(gse2) > 5) >= 3
+sumexp <- gse2[keepIt,]
+
+gene_info <- as.data.frame(rowData(sumexp)@listData)
+assay_info <- as.data.frame(assay(sumexp))
+sample_info <- as.data.frame(colData(sumexp)@listData)
+
+#filtered out 1000 (Not assessed for age)
+sample_info <- sample_info%>%
+  filter(Age != 1000)
+
+#updating SE for ages we want to keep
+ages <- sample_info$Run
+sumexp <- sumexp[ ,ages]
+
+sample_info <- as.data.frame(colData(sumexp)@listData)
+gene_info <- as.data.frame(rowData(sumexp)@listData)
+assay_info <- as.data.frame(assay(sumexp))
+gene_info$external_gene_name <- ifelse(is.na(gene_info$external_gene_name), gene_info$GENEID, gene_info$external_gene_name)
+gene_info$external_gene_name <- ifelse(gene_info$external_gene_name == "", gene_info$GENEID, gene_info$external_gene_name)
+sample_info <- sample_info[ ,-c(3:30)]
+sample_info <- sample_info[ ,-c(4:8)]
+sample_info <- sample_info[ ,-c(18:19)]
+
+#format dataset to lower and make new body column for all randomness
+sample_info <- sample_info %>%
+  dplyr::mutate(body_site = tolower(body_site),
+                PRIMARY_TUMOR_LOCATION = tolower(PRIMARY_TUMOR_LOCATION))
+
+sample_info$BODY_SITE <- str_extract(sample_info$body_site, "^[^\\s_]+")
+sample_info$PRIMARY_TUMOR_LOCATION <- str_extract(sample_info$PRIMARY_TUMOR_LOCATION, "^[^\\s_]+")
+sample_info$BODY_SITE <- ifelse(sample_info$BODY_SITE == "abdomen", "abdominal", sample_info$BODY_SITE)
+sample_info$PRIMARY_TUMOR_LOCATION <- ifelse(sample_info$PRIMARY_TUMOR_LOCATION == "abdomen", "abdominal", sample_info$PRIMARY_TUMOR_LOCATION)
+
+#updating sumexp object 
+sumexp$BODY_SITE <- sample_info$BODY_SITE
+sumexp$PRIMARY_TUMOR_LOCATION <- sample_info$PRIMARY_TUMOR_LOCATION
+
+#table data 
+age <- sumexp$Age
+patient <- sumexp$submitted_subject_id
+body_site <- sumexp$BODY_SITE
+gender <- sumexp$Gender
+tumor <- sumexp$PRIMARY_METASTATIC_TUMOR
+prim_location <- sumexp$PRIMARY_TUMOR_LOCATION
+table(patient, gender, body_site, age, tumor)
+
+```
+
+```{r histograms, echo=FALSE}
+#run/library size distribution scaled down
+#distribution sum of samples scaled 
+hist(colSums(assays(sumexp)$counts/1e06), breaks = 10, xlab = "Sample Sum/1e06", main ="Distribution of Total Counts Per Sample")
+
+hist(assays(sumexp)$counts, breaks = 10,xlab = "Counts", main ="Distribution of Counts")
+
+hist(log2(assays(sumexp)$counts +1), col="lightblue", border="white",
+     breaks=100, main="Distribution of Counts (log)",
+     xlab="Counts (log)",  
+     las=1, cex.axis=0.7)
+
+#closer look at one sample that has an outlier to see how data may be distributed
+ggplot(assay_info) +
+  geom_histogram(aes(x = SRR4305672), stat = "bin", bins = 100) +
+  xlab("Counts") +
+  ylab("Frequency") +
+    ggtitle("Distribution of Gene counts for 1 sample") +
+  xlim(0,100)
+
+```
+
+**Key Takeaways:**
+
+* skewed data, log transformed helps visualization
+* most samples have 50/1e06 counts total
+
+```{r dims,echo=FALSE, include=FALSE}
+dim(assay(sumexp))
+sample_info %>%
+  dplyr::group_by(Gender) %>%
+  dplyr::count()
+range(sample_info$Age)
+head(summary(assay(sumexp)[,1:4]))
+```
+
+**Summary Stats Takeaways:**
+
+* 1837 samples but after filtering out ages that were not assessed (ie. 1000) 1636 samples
+* 797 Females and 839 Males
+* Ages range from 0 to 93
+* counts range from 0 to millions
+
+```{r samp,echo=FALSE}
+hist(sample_info$Age, breaks = 20,xlab = "Age (y/o)", main ="Distribution of Ages")
+```
+
+
+```{r gendercounts,echo=FALSE}
+boxplot(colSums(assays(sumexp)$counts)/1e6 ~ gender,ylab = "Scaled Total Counts")
+```
+```{r body count,echo=FALSE}
+#filtereing body sites 10 samples per body site and no Nas'
+filt_counts <- sample_info %>%
+  dplyr::group_by(BODY_SITE) %>%
+  dplyr::summarise(num = n()) %>%
+  dplyr::filter(num >= 10)
+sam_body <- sample_info %>%
+  dplyr::filter(BODY_SITE %in% filt_counts$BODY_SITE,
+                !PRIMARY_TUMOR_LOCATION %in% c("?", "unknown", "NA", "n/a"))
+sam_body <- sam_body[!is.na(sam_body$PRIMARY_TUMOR_LOCATION), ]
+
+#editing se to only have high numbered body sites and legit Primary Tumor Sites
+seAgeBody <- sumexp[,sam_body$Run]
+
+boxplot(colSums(assays(seAgeBody)$counts)/1e6 ~ seAgeBody$BODY_SITE, xlab = "", ylab = "Scaled Total Gene Counts", main= "Gene Counts Across Metastatic Body Sites (filtered > 10 samples)", las = 2,cex.axis = 0.6)
+```
+
+```{r gender body,echo=FALSE}
+sam_body%>%
+  filter(!PRIMARY_TUMOR_LOCATION %in% c("breast","prostate")) %>%
+  ggplot(aes(x = PRIMARY_TUMOR_LOCATION)) +
+  geom_bar(aes(fill = PRIMARY_METASTATIC_TUMOR))+
+  xlab("Tumor Site") +
+  ylab("Number of Samples") +
+  ggtitle("Number of Primary Tumor Sites (colored by gender)")+
+  theme(axis.text.x = element_text(angle = 45, size = 5, hjust = 1),
+        legend.key.size = unit(0.25, "cm"),
+        legend.title = element_text(size = 5),
+        legend.text = element_text(size = 8))
+```
+```{r bodysites, echo=FALSE}
+sam_body %>%
+  filter(PRIMARY_TUMOR_LOCATION == "blood") %>%
+  ggplot(aes(x = BODY_SITE, fill = "red")) +
+  geom_bar()+
+  ggtitle("Number of samples by Metastatic Body Site")+
+  theme(axis.text.x = element_text(angle = 45, size = 5, hjust = 1),
+        legend.position = "none") 
+
+```
+
+
+```{r metpro,echo=FALSE}
+#getting subset SE object for my anaylsis on male with prostate primary..
+seMale <- seAgeBody[ ,seAgeBody$Gender == "M"]
+seMalePros <- seMale[,seMale$PRIMARY_TUMOR_LOCATION == "prostate"]
+seMalePros$BODY_SITE <- factor(seMalePros$BODY_SITE, levels = c("lymph","peritoneal","bone","liver","adrenal","prostate","subcutaneous","chest","pelvic",       "bladder","abdominal","lung","brain","neck" ))
+
+#column data for Males with Prostate Primary 
+samp_MalePros <- as.data.frame(colData(seMalePros)@listData)
+
+boxplot(colSums(assays(seMalePros)$counts)/1e6 ~ seMalePros$BODY_SITE, xlab = "", ylab = "Scaled Total Gene Counts", main= "Gene counts for Metastatic Sites in Males with Prostate Primary", las = 2,cex.axis = 0.5)
+```
+
+
+**Key Takeaways:**
+
+* males and females have similar variance and medians of total gene counts
+* most ages seem to be around 60 y/o
+* all very similar variance and median counts across all body types around 50 mill, (some outliers in liver, retropeintoneum, adrenal, and lymph)
+* lung and liver primary locations have most even groups of males and females (23 M/16 F in liver and 22 M/28 F in lung)
+* most metatastic tumors in liver 
+* for just males 234 have primary locations of prostate (I will focus on this group for a statistical analysis)
+* for just males with primary locations of prostate most metastasized to liver and lymph nodes, also have largest ranges
+
+
+**Statistical Tests for Males with Prostate Primary Tumor**
+
+*RQ: How does the age range, of men with prostate primary tumors, change across body site of their metastatic tumor? * 
+
+*or*
+
+How  *RQ: How gender and age impact gene expression count?*
+
+
+```{r vis, echo=FALSE}
+#plot
+samp_MalePros %>%
+  ggplot(aes(x = BODY_SITE, y = Age, fill = BODY_SITE)) +
+  geom_boxplot() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 90, hjust = 1)) +
+  xlab("Metastatic Site")
+```
+
+```{r anovalm, include=FALSE, echo=FALSE}
+#analysis
+samp_MalePros <- samp_MalePros %>%
+  filter(BODY_SITE %in% c("lymph", "liver", "bone", "prostate")) 
+
+samp_MalePros$Age <- as.numeric(as.character(samp_MalePros$Age))
+samp_MalePros$BODY_SITE <- as.factor(samp_MalePros$BODY_SITE)
+
+agePros_aov <- aov(samp_MalePros$Age~samp_MalePros$BODY_SITE)
+lm_agePros <- lm(Age ~ 0 + BODY_SITE, data = samp_MalePros)
+summary(agePros_aov)
+```
+
+```{r assumpt, echo=FALSE}
+#checking assumptions
+plot(agePros_aov)
+```
+
+
+**Key Takeaways:**
+
+* constant variance (no tunneling or fanning in residual vs fitted plot)
+* linearity (fit normal qq plot)
+* independence (each sample is different male with primary prostate cancer)
+* Assumptions hold
+
+
+```{r summar,include=FALSE, echo=FALSE}
+summary(lm_agePros)
+confint(lm_agePros)
+```
+
+
+**Key Takeaways:**
+
+* Men with prostate tumors are likely to have metastasized location in lymph nodes when they are between the ages of 65 and 68 years old. 
+* Men with prostate tumors are likely to have metastasized location in the bone when they are between the ages of 60 and 65 years old. 
+* Men with prostate tumors are likely to have metastasized location in liver when they are between the ages of 64 and 69 years old. 
+* Men with prostate tumors are likely to have metastasized location in prostate when they are between the ages of 57 and 64 years old.
+
+
+
+```{r dispersion, echo=FALSE}
+counts <- assays(seAgeBody)$counts
+variance.counts <- apply(assay(seAgeBody),1,var)
+mean.counts <-rowMeans(assay(seAgeBody))
+mean.var.col <- densCols(x=log2(mean.counts), y=log2(variance.counts))
+
+
+plot(x=log2(mean.counts), y=log2(variance.counts),pch=16, cex=0.5, 
+     col=mean.var.col, main="Log mean-variance relationship",
+     xlab="Mean log2(normalized counts) per gene",
+     ylab="Variance of log2(normalized counts)",
+     panel.first = grid())
+abline(a=0, b=1, col="brown")
+```
+
+**Key Takeaways:**
+
+* overdispersion
+* we will use a Negative Binomial for DE experiment 
+
+*RQ: How gender and age impact gene expression count?*
+
+\begin{align}
+\log(\mu_i) &= \beta_0 + \beta_1 x_{Age}  + \beta_3 I_{Gender = M} 
+\end{align}
+
+```{r, include = FALSE}
+se_OneSubj <- sumexp[ , !duplicated(sumexp$submitted_subject_id)]
+se_OneSubj <- se_OneSubj[rowSums(cpm(se_OneSubj) > 10) >= 50]
+
+#merege to visualize counts and Age
+subj_info <- as.data.frame(colData(se_OneSubj))
+counts_info <- as.data.frame(assays(se_OneSubj)$counts)
+#counts_info <- counts_info %>% rownames_to_column(var = "genes")
+# counts_info <- pivot_wider(counts_info,
+#                            names_from = genes,
+#                            values_from = 2:1133,
+#                            names_t)
+
+ggplot(aes(y = as.data.frame(colSums(assays(se_OneSubj)$counts)), x = as.data.frame(se_OneSubj$Age))) + geom_point(alpha = .1) +
+  geom_smooth(method ='loess', formula = "y ~ x", se = F) +
+  theme_bw() +
+  ggtitle('Gene Count by Age') + 
+  ylab('Number of Genes') + xlab("Age")
+```
+
+```{r, include=FALSE}
+design <- model.matrix(~ 0 + Age + Gender, data=colData(se_OneSubj))
+dge <- calcNormFactors(se_OneSubj)
+dge <- estimateDisp(dge, design) 
+
+
+fit <- glmFit(dge, design)
+results <- glmLRT(fit, coef = 3)
+summary(results)
+results$table
+topTags(results)
+
+summary(fit$coefficients)
+head(fit$coefficients)
+
+
+ggplot(aes(y = , x = as.data.frame(se_OneSubj$Age))) + geom_point(alpha = .1) +
+  geom_smooth(method ='loess', formula = "y ~ x", se = F) +
+  theme_bw() +
+  ggtitle('Gene Count by Age') + 
+  ylab('Number of Genes') + xlab("Age")
+
+```
+
+- intercept is log averaged gene expression for women variable across all ages
+- women are estimated to have -10.54 .... gene expression and men ahve -10.53 ... gene expression. 
+- for a one year increase in age the ..... gene expression increase by 0.00027. 
+
+*RQ: How does differential expression change in lung metastatic tumors with different primary tumor locations (lung and tongue)*
+
+```{r samplung, echo=FALSE}
+#samp_body all same just >10 counts per met body site and no Nas in primary
+seLung <- seAgeBody[,seAgeBody$BODY_SITE == "lung"]
+seLung <- seLung[, seLung$PRIMARY_TUMOR_LOCATION %in% c("lung","tongue")]
+
+# seLung$Gender <- as.factor(seLung$Gender)
+# seLung$PRIMARY_TUMOR_LOCATION <- as.factor(seLung$PRIMARY_TUMOR_LOCATION)
+# seLung$Age <- as.factor(seLung$Age)
+samp_lung <- as.data.frame(colData(seLung)@listData)
+gene_info_lung <- as.data.frame(rowData(seLung)@listData)
+gene_info_lung$external_gene_name <- ifelse(is.na(gene_info_lung$external_gene_name), gene_info_lung$GENEID, gene_info_lung$external_gene_name)
+gene_info_lung$external_gene_name <- ifelse(gene_info_lung$external_gene_name == "", gene_info_lung$GENEID, gene_info_lung$external_gene_name)
+samp_lung <- samp_lung[,-c(46:48)]
+samp_lung <- samp_lung[,-c(48:49)]
+samp_lung <- samp_lung[,-c(2:40)]
+```
+
+
+```{r dd2, echo=FALSE}
+assays(seLung)$counts <- round(assays(seLung)$counts)
+dds2 = DESeqDataSet(seLung, design = ~Gender + PRIMARY_TUMOR_LOCATION)
+
+#normalizing
+dds2 = estimateSizeFactors(dds2)
+
+#estimating dispersion
+dds2 = estimateDispersions(dds2)
+
+#plot dispersion
+plotDispEsts(dds2)
+
+```
+
+```{r binomial, echo=FALSE, include=FALSE}
+#differential expression
+dds2 <- nbinomWaldTest(dds2)
+
+# Define the contrast you want to test
+contrast1 <- c("PRIMARY_TUMOR_LOCATION","lung","tongue")
+
+# Perform differential expression analysis with the specified contrast
+resDESeq2 <- results(dds2, contrast = contrast1)
+resDESeq2 <- resDESeq2[order(resDESeq2$padj),]
+head(resDESeq2)
+```
+
+
+```{r ensig, include=FALSE}
+padj.cutoff <- 0.05
+resSig <- resDESeq2 %>%
+        data.frame() %>%
+        filter(padj < padj.cutoff) %>%
+        rownames_to_column(var = "gene")
+
+#gene symbols in results table 
+resSig <- left_join(resSig, gene_info_lung, by = c("gene" = "GENEID"))
+rownames(resSig) <- resSig$gene
+resSig <- resSig[,-1]
+
+most.diff <- counts(dds2, normalized=T)["ENSG00000184709.7",]
+barplot(most.diff, main='LRRC26', las=2, cex.names=0.5)
+```
+
+
+**Key Takeaways:**
+
+* Dispersion looks good, decrease dispersion with increased counts
+* Looking at difference between lung metastatic tumors from primary lung and tongue tumors.
+* KLK2, SNORA50C, and LRRC26 genes are some of greatest DEG between lung and tongue primary tumors. 
+ 
+
+
+
+*To Do:*
+
+* Look into how these gene function
+* RQ: How gender and age impact gene expression count?*
+* Contrast 2: How does differential expression change in specific body site for different ages?
+
+
+
+
+
+
+

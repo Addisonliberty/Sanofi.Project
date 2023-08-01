@@ -1,0 +1,179 @@
+---
+title: "Met500"
+output: pdf_document
+date: "2023-07-06"
+---
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(DESeq2)
+library(purrr)
+library(ggplot2)
+library(dplyr)
+library(biomaRt)
+library(AnnotationDbi)
+library(tximport)
+library(rtracklayer); library(GenomicFeatures)
+library(TxDb.Hsapiens.UCSC.hg19.knownGene)
+library(tximeta)
+library(org.Hs.eg.db)
+library(dplyr)
+
+```
+
+
+i. readingn and formatting raw counts/column data
+#txi
+```{r}
+txdb <- makeTxDbFromGFF("~/Downloads/gencode.v42.basic.annotation.gtf", 
+                format = "auto", dataSource = NA, organism = "Homo sapiens", taxonomyId = NA)
+```
+```{r}
+k <- keys(txdb, keytype = "TXNAME")
+tx2gene <- select(txdb, k, "GENEID", "TXNAME")
+```
+
+#files
+```{r}
+dir <- "/Users/U1006746/Downloads/sbgenomics 2/Projects/1d259514-1638-4760-945d-a7d6be758828/results"
+subdir <- list.dirs(dir, recursive = FALSE)
+names <- gsub("/Users/U1006746/Downloads/sbgenomics 2/Projects/1d259514-1638-4760-945d-a7d6be758828/results/", "", subdir)
+names <- gsub("_kallisto-quant", "", names)
+names <- names[-c(1,2)]
+names
+```
+
+```{r}
+metfiles <- file.path(dir, paste(names, "_kallisto-quant/abundance.tsv", sep = ""))
+names(metfiles) <- paste0(names)
+```
+
+
+#assay
+#raw counts
+```{r}
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+attributes_first <- c("ensembl_gene_id_version", "external_gene_name", "description")
+rowData <- getBM(attributes = attributes_first, 
+                filters = "ensembl_gene_id_version",
+                values = tx2gene$GENEID, 
+                mart = ensembl)
+rowData <- rowData %>%
+  dplyr::select(ensembl_gene_id_version, external_gene_name) %>%
+  distinct(ensembl_gene_id_version, .keep_all = TRUE)
+
+tx2 <- left_join(tx2gene, rowData, by = c("GENEID" = "ensembl_gene_id_version"))
+
+met_count_data <- tximport(metfiles, type = "kallisto", txOut = TRUE)
+
+```
+
+
+#columns
+#read in column data
+```{r}
+mk_colData <- readxl::read_xlsx("~/Desktop/prj34866_metadata.xlsx")
+CSER_GRU<- readxl::read_xlsx("~/Desktop/phs000673.v4.pht003663.v4.p1.c1.CSER_Sample_Attributes.GRU.xlsx")
+CSER_pheno<- readxl::read_xlsx("~/Desktop/phs000673.v4.pht003662.v4.p1.c1.CSER_Subject_Phenotypes.GRU.xlsx")
+```
+
+#columns
+```{r}
+#just closer look at tables
+gru_4125 <- CSER_GRU %>%
+  dplyr::select(SAMPLE_ID, ANALYTE_TYPE) %>%
+  mutate(Sample_Id = as.integer(gsub("MCTP_SI_", '', SAMPLE_ID)))
+
+#figure out what are dups
+meta_1843 <- mk_colData %>%
+  dplyr::select(biospecimen_repository_sample_id, submitted_subject_id, LibrarySelection) %>%
+  mutate(Sample_Id = as.integer(gsub("MCTP_SI_", '', biospecimen_repository_sample_id)))
+
+dups <- mk_colData[duplicated(mk_colData$biospecimen_repository_sample_id), ]
+
+#removed RANDOM PCR from mk_colData
+mk_1837_colData <- mk_colData %>%
+  dplyr::filter(!Run %in% c('SRR1617647', 'SRR1617650','SRR1617654', 'SRR1617670',
+                            'SRR1617676', 'SRR1617679'))
+
+#removed DNA analyte type from GRU 
+gru_1837 <- CSER_GRU %>%
+  dplyr::filter(ANALYTE_TYPE == 'RNA') 
+
+```
+
+#assay
+#editing raw counts to exclude those 6 RANDOMPCR
+```{r}
+########### if keep Ranomd PCR - keep met_count_data, else...
+cd1 <- met_count_data
+
+#for abudance/lenght/counts get rid of those 6 samples...
+cd1$counts <- met_count_data$counts[,!colnames(met_count_data$counts) %in% c('SRR1617647', 'SRR1617650', 'SRR1617654','SRR1617670', 'SRR1617676', 'SRR1617679')]
+cd1$abundance <- cd1$abundance[,!colnames(cd1$abundance) %in% c('SRR1617647', 'SRR1617650', 'SRR1617654','SRR1617670', 'SRR1617676', 'SRR1617679')]
+cd1$length <- cd1$length[,!colnames(cd1$length) %in% c('SRR1617647', 'SRR1617650', 'SRR1617654','SRR1617670', 'SRR1617676', 'SRR1617679')]
+```
+
+#columns
+```{r}
+#added phenotype data
+meta_pheno <- left_join(mk_1837_colData,CSER_pheno, by = c('submitted_subject_id'= 'SUBJECT_ID'))
+
+meta_pheno_gru <- full_join(meta_pheno, gru_1837, 
+                            by = c("biospecimen_repository_sample_id" = "SAMPLE_ID"))
+
+#editing condition(primar/met to now have / and be a factor)
+#get factor for the primary or met tumor
+meta_pheno_gru$PRIMARY_METASTATIC_TUMOR <- ifelse(meta_pheno_gru$PRIMARY_METASTATIC_TUMOR == 'N/A',
+                                                  'NA',meta_pheno_gru$PRIMARY_METASTATIC_TUMOR)
+
+meta_pheno_gru$PRIMARY_METASTATIC_TUMOR <- as.factor(meta_pheno_gru$PRIMARY_METASTATIC_TUMOR)
+```
+
+
+```{r}
+
+rowdata <- tx2
+tx2gene <- rowdata[,1:2]
+meta_pheno_gru$Run <-  sort(meta_pheno_gru$Run)
+rownames(meta_pheno_gru) = meta_pheno_gru[["Run"]]
+
+extra = setdiff(rownames(cd1[[1]]), as.character(tx2[["TXNAME"]]))
+
+if (length(extra) > 0) {
+    rowdata = rbind(rowdata, data.frame(TXNAME=extra, GENEID=extra, external_gene_name=extra))
+}
+
+rowdata = rowdata[match(rownames(cd1[[1]]), as.character(rowdata[["TXNAME"]])),]
+rownames(rowdata) = rowdata[["TXNAME"]]
+
+
+
+#joined_colData <- sample_info2
+se = SummarizedExperiment(assays = list(counts = cd1[["counts"]], 
+                                        abundance = cd1[["abundance"]], length = cd1[["length"]]),
+                          colData = DataFrame(meta_pheno_gru),
+                          rowData = rowdata)
+
+#getting gene level counts 
+gi = summarizeToGene(cd1, tx2gene = tx2gene)
+
+#get unique gene names and ids
+growdata = unique(rowdata[,2:3])
+growdata2 = growdata[match(rownames(gi[[1]]), growdata[["GENEID"]]),]
+rownames(growdata) = growdata[["TXNAME"]]
+
+gse2 = SummarizedExperiment(assays = list(counts = gi[["counts"]], abundance = gi[["abundance"]], length = gi[["length"]]),colData = DataFrame(meta_pheno_gru),rowData = growdata)
+
+
+saveRDS(gse2, file = "/Users/U1006746/Desktop/counts.AK.output/dds_met_gene_counts.rds")
+
+```
+
+
+
+
+
+
+
