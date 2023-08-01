@@ -286,12 +286,6 @@ sigRes_all <- sigRes_all[,-1]
 # summary(sigRes_fil2, alpha > 0.05)
 ```
 
-```{r}
-# GenesSigRes <- sigRes_all %>%
-#   filter(padj <= 0.05,
-#          log2FoldChange >= 1 | log2FoldChange<= -1) %>%
-#   select(padj, log2FoldChange, external_gene_name)
-```
 
 **V. Volcano Plot**
 ```{r}

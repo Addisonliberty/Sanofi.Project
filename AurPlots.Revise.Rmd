@@ -190,27 +190,27 @@ ggsave('barplot_body_smaples.png', width = 8, height = 8)
 
 **IV. Number of Metastatic samples per Subject.**
 ```{r}
-ggthemr("light")
-barplot_data %>%
-  mutate(is_highlighted = ifelse(subject %in% c("AUR-AER6", "AUR-AFEA", "AUR-AFE9"), "Highlighted", "Not Highlighted")) %>%
-  ggplot(aes(x = subject, fill = is_highlighted)) +
-  geom_bar() +
-  ggtitle("Number Metastatic Tumors per Subject")+
-  xlab("Subject") +
-  ylab("Number of Samples") +
-  theme(
-    legend.title = element_text(size = 5), 
-    legend.position = "none",
-    axis.text.x = element_text(angle = 90, margin = margin(t = 5)),
-    axis.title.x = element_text(margin = margin(t = 10, b = 20)),
-    axis.title.y = element_text(margin = margin( r = 10)),
-    plot.title = element_text(hjust = 0.5),
-    plot.caption.position = "panel" ,
-    plot.caption = element_text(margin = margin(l = 60, r = 60)),
-    plot.margin = unit(c(0.25, 0.2, 0.2, 0.25),"inches"))+
-  scale_x_discrete(labels=c("AUR-AER6"=expression(bold("AUR-AER6")), "AUR-AFEA"=expression(bold("AUR-AFEA")),
-                              "AUR-AFE9"=expression(bold("AUR-AFE9")), parse=TRUE))
-  
+# ggthemr("light")
+# barplot_data %>%
+#   mutate(is_highlighted = ifelse(subject %in% c("AUR-AER6", "AUR-AFEA", "AUR-AFE9"), "Highlighted", "Not Highlighted")) %>%
+#   ggplot(aes(x = subject, fill = is_highlighted)) +
+#   geom_bar() +
+#   ggtitle("Number Metastatic Tumors per Subject")+
+#   xlab("Subject") +
+#   ylab("Number of Samples") +
+#   theme(
+#     legend.title = element_text(size = 5), 
+#     legend.position = "none",
+#     axis.text.x = element_text(angle = 90, margin = margin(t = 5)),
+#     axis.title.x = element_text(margin = margin(t = 10, b = 20)),
+#     axis.title.y = element_text(margin = margin( r = 10)),
+#     plot.title = element_text(hjust = 0.5),
+#     plot.caption.position = "panel" ,
+#     plot.caption = element_text(margin = margin(l = 60, r = 60)),
+#     plot.margin = unit(c(0.25, 0.2, 0.2, 0.25),"inches"))+
+#   scale_x_discrete(labels=c("AUR-AER6"=expression(bold("AUR-AER6")), "AUR-AFEA"=expression(bold("AUR-AFEA")),
+#                               "AUR-AFE9"=expression(bold("AUR-AFE9")), parse=TRUE))
+#   
 
 ```
 **Fig. 4. The number of metastatic samples for each of the 39 subjects. In bold are the subjects with highest number of samples.**
@@ -271,10 +271,8 @@ sigRes <- sigRes[,-1]
 head(sigRes)
 
 #filter for heatmap
-sigRes_fil <- sigRes[(sigRes$baseMean > 150) & abs(sigRes$log2FoldChange > 2),]
-
-summary(sigRes_fil, alpha > 0.05)
-
+# sigRes_fil <- sigRes[(sigRes$baseMean > 150) & abs(sigRes$log2FoldChange > 2),]
+# summary(sigRes_fil, alpha > 0.05)
 ```
 
 
@@ -411,3 +409,7 @@ as.data.frame(aurora_gse)
 ```
 
 
+```{r}
+gseaplot(aurora_gse, geneSetID = 6, title = met_gse$Description[6])
+ggsave('Aurora_gsea.png', width = 15, height = 10)
+```
