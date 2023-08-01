@@ -376,7 +376,6 @@ dev.off()
 
 
 GSEA
-
 ```{r}
 #ordered results table
 
@@ -390,7 +389,7 @@ resDESeq_gse <- resDESeq_gse[,-1]
 ```
 
 ```{r}
-gene_list <- resDESeq_gse$stat
+gene_list <- resDESeq_gse$log2FoldChange
 names(gene_list) <- rownames(resDESeq_gse)
 gene_list<- na.omit(gene_list)
 gene_list = sort(gene_list,decreasing = TRUE)
@@ -410,6 +409,9 @@ as.data.frame(aurora_gse)
 
 
 ```{r}
-gseaplot(aurora_gse, geneSetID = 6, title = met_gse$Description[6])
+gseaplot(aurora_gse, geneSetID = 3, title = aurora_gse$Description[3])
 ggsave('Aurora_gsea.png', width = 15, height = 10)
 ```
+
+**Metastatic is downregulated 
+
