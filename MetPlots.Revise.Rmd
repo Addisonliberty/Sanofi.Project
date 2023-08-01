@@ -407,31 +407,31 @@ GSEA
 ```{r}
 #ordered results table
 
-resDESeq_gse <- resDESeq_names %>%
+sigResall_gse <- sigRes_all %>%
   filter(!grepl("^ENSG",external_gene_name)) %>%
   rownames_to_column(var = "geneID")
-resDESeq_gse <- resDESeq_gse %>%
+sigResall_gse <- sigResall_gse %>%
   mutate(geneID = str_replace(geneID,"\\..*$", ""))
-rownames(resDESeq_gse) <- resDESeq_gse$geneID
-resDESeq_gse <- resDESeq_gse[,-1]
+rownames(sigResall_gse) <- sigResall_gse$geneID
+sigResall_gse <- sigResall_gse[,-1]
 ```
 
 ```{r}
-gene_list <- resDESeq_gse$stat
-names(gene_list) <- rownames(resDESeq_gse)
-gene_list<- na.omit(gene_list)
-gene_list = sort(gene_list,decreasing = TRUE)
-gene_list
+gene_list2 <- sigResall_gse$log2FoldChange
+names(gene_list2) <- rownames(sigResall_gse)
+gene_list2 <- na.omit(gene_list2)
+gene_list2 = sort(gene_list2,decreasing = TRUE)
+gene_list2
 ```
 
 ```{r}
-aurora_gse <- gseGO(gene_list,
+met_gse <- gseGO(gene_list2,
                     ont = "BP",
                     keyType = "ENSEMBL",
                     OrgDb = "org.Hs.eg.db",
                     eps = 1e-300)
 
-as.data.frame(aurora_gse)
+as.data.frame(met_gse)
 
 ```
 
