@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "Met500 Plots"
 output: html_notebook
 ---
 ```{r libs,eval=TRUE, include=FALSE}
@@ -16,9 +16,11 @@ library(reshape2)
 library(limma)
 library(edgeR)
 library(PCAtools)
+library(clusterProfiler)
+library(org.Hs.eg.db)
 ```
 
-
+#loading in rsd and formatting SE object
 ```{r data, eval=TRUE, include=FALSE}
 gse2 <- readRDS(file = "/Users/U1006746/Desktop/counts.AK.output/dds_met_gene_counts.rds")
 list <- c()
@@ -107,32 +109,20 @@ sample_info <- as.data.frame(colData(sumexp)@listData)
 library(tidySummarizedExperiment)
 sumexp3 <- sumexp3 %>%
   group_by(PRIMARY_TUMOR_LOCATION)
-#sumexp3 <- sumexp3[, -c(7:45)]
 
 sumexp3<- sumexp3 %>%
   filter(.sample %in% rows)
 
 sumexp3$.sample <- factor(sumexp3$.sample, levels = unique(sumexp3$.sample[order(sumexp3$Gender)]))
-#sumexp3$Age <- as.integer(sumexp3$Age)
 sumexp3$.sample <- factor(sumexp3$.sample, levels = unique(sumexp3$.sample[order(sumexp3$PRIMARY_TUMOR_LOCATION)]))
 
 ```
 
 Summary of Data:
-
 * 1145 samples, not paired 
 * 1070 Metastatic sites and 71 Primary sites
 * 1132 subjects
 * focus on just Metastatic sites
-
-
-**Plots**
-```{r}
-plottingMETFilt %>% 
-  filter(!tumor %in% c("NA","Primary")) %>%
-  group_by(body) %>%
-  summarise(count = n())
-```
 
 
 ```{r}
@@ -239,7 +229,6 @@ p2 <- pca(assay(vsd2), metadata = colData(vsd2), removeVar = 0.1)
 biplot(p2, colby = "PRIMARY_TUMOR_LOCATION", lab = NULL, legendPosition = 'right', legendTitleSize = 8, legendLabSize = 8, title = "PCA of Bile vs Esophagus Tumors" )
 ggsave('metpcas.png', width = 8, height = 5)
 ```
-
 **Fig 4. The PCA shows some distinction between primary tumor locations, however there is some mixing.**
 
 ```{r}
@@ -256,8 +245,10 @@ dds2 = nbinomWaldTest(dds2)
 contrast1 <- c("PRIMARY_TUMOR_LOCATION", "bile", "esophagus")
 resDESeq2 = results(dds2, contrast = contrast1)
 
+#ordering by significant p-values
 resDESeq2 <- resDESeq2[order(resDESeq2$padj),]
 head(resDESeq2)
+
 #summary of <0.05 p-value
 summary(resDESeq2, alpha = 0.05)
 
@@ -287,7 +278,6 @@ sigRes_all <- sigRes_all[,-1]
 ```
 
 
-**V. Volcano Plot**
 ```{r}
 select = c("CDCA5","HMGA1", "BRI3BP", "UBE2S", "KIAA0903", "TSPAN5", "FGFR4", "GK5","GASK1A", "ADPRM","MED12L","MYH11","ACTG2", "PRDM8", "MED12L", "ZNF594", "PRDM8")
 
@@ -312,7 +302,6 @@ EnhancedVolcano(toptable = sigRes_all,
 ggsave('Met_volcano_plot.png', width = 15, height = 10)
 ```
 **Fig 5. Shows genes in red that both have "significant" differences between the two and have distinct unregulated or downregulated log fold changes (how much gene is expressed).**
-
 
 ```{r}
 #getting sample info
@@ -393,17 +382,17 @@ png("heatmap_MET.png", res = 250, width = 4000, height = 2000)
 print(h4)
 dev.off()
 ```
-
 **Fig 6. Tend to be specific unregulated genes in esophagus vs bile. For example CDK5 is upregulted in bile duct cancers and not in esophagus. **
 
-GSEA
 
+#GSEA
 ```{r}
 #ordered results table
-
 sigResall_gse <- sigRes_all %>%
   filter(!grepl("^ENSG",external_gene_name)) %>%
   rownames_to_column(var = "geneID")
+
+#mading it not be versions
 sigResall_gse <- sigResall_gse %>%
   mutate(geneID = str_replace(geneID,"\\..*$", ""))
 rownames(sigResall_gse) <- sigResall_gse$geneID
@@ -411,6 +400,7 @@ sigResall_gse <- sigResall_gse[,-1]
 ```
 
 ```{r}
+#gene list ordered by decending LFC
 gene_list2 <- sigResall_gse$log2FoldChange
 names(gene_list2) <- rownames(sigResall_gse)
 gene_list2 <- na.omit(gene_list2)
@@ -419,6 +409,7 @@ gene_list2
 ```
 
 ```{r}
+#running gsea
 met_gse <- gseGO(gene_list2,
                     ont = "BP",
                     keyType = "ENSEMBL",
@@ -426,11 +417,12 @@ met_gse <- gseGO(gene_list2,
                     eps = 1e-300)
 
 as.data.frame(met_gse)
-
 ```
 
 ```{r}
-gseaplot(met_gse, geneSetID = 6, title = met_gse$Description[6])
-ggsave('Met_gsea.png', width = 15, height = 10)
+gseaplot(met_gse, geneSetID = 5, title = met_gse$Description[5])
+#ggsave('Met_gsea.png', width = 15, height = 10)
+
+emapplot(met_gse, showCategory = 10)
 ```
 
