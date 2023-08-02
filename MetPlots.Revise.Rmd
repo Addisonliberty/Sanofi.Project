@@ -277,12 +277,18 @@ sigRes_all <- sigRes_all[,-1]
 # summary(sigRes_fil2, alpha > 0.05)
 ```
 
+```{r}
+look <- sigRes_all %>%
+ filter(!grepl("^ENSG", external_gene_name),
+        padj <= 0.05,
+        log2FoldChange <= -1)
+```
 
 ```{r}
 select = c("CDCA5","HMGA1", "BRI3BP", "UBE2S", "KIAA0903", "TSPAN5", "FGFR4", "GK5","GASK1A", "ADPRM","MED12L","MYH11","ACTG2", "PRDM8", "MED12L", "ZNF594", "PRDM8")
 
 
-select_cool <- c("ACTG2","MED12L", "UBE2S", "CDCA5", "H2AX", "BIRC5", "TK1", "GINS2")
+select_cool <- c("GK5", "UBE2S", "CDCA5", "BIRC5", "TK1")
 ggthemr("grape")
 
 EnhancedVolcano(toptable = sigRes_all,
@@ -333,42 +339,30 @@ colnames(count.table.z) <- colnames(count.table)
 
 #colors
 
-myCols2 <- c("bile : SRR4307033", "bile : SRR4307364","bile : SRR4306923","bile : SRR4307368",
-             "esophagus : SRR8762949","esophagus : SRR8762945","esophagus : SRR8762960",
-             "esophagus : SRR8762529","esophagus : SRR8763004","bile : SRR4306880","bile : SRR4305807")
+myCols2 <- c("bile : SRR4307033", "bile : SRR4307364","bile : SRR4306923","bile : SRR4307368","esophagus : SRR8762949","esophagus : SRR8762625","esophagus : SRR8762960","esophagus : SRR8763004")
 row_idx2 <- which(colnames(count.table.z) %in% myCols2)
 
 
 fontcolors <- rep('grey', ncol(count.table.z))
-fontcolors[1] <- "#0000FF"
-fontcolors[10] <- "#0000FF" #bile
-fontcolors[11] <- "#DC143C" #esophaguse
+fontcolors[11] <- "black" #esophagus
 fontcolors[12] <- "#0000FF" #bile
 fontcolors[14] <- "#0000FF"  #bile
 fontcolors[15] <- "#0000FF" #bile
-fontcolors[21] <- "#DC143C" #esophagus
-fontcolors[26] <- "#DC143C" #esophagus
+
+fontcolors[23] <- "black" #esophagus
 fontcolors[11] <- "#0000FF" #bile
-fontcolors[27] <- "#DC143C" #esophagus
-fontcolors[28] <- "#DC143C" #esophagus
-fontcolors[29] <- '#DC143C' #esophagus
+fontcolors[27] <- "black" #esophagus
+fontcolors[28] <- "black" #esophagus
+fontcolors[29] <- 'black' #esophagus
 
  fontcolors_rows <- rep('black', nrow(count.table.z))
- fontcolors_rows[1] <-  "#DC143C" #esophagus
+ fontcolors_rows[1] <- "#0000FF"
  fontcolors_rows[2] <- "#0000FF"
+ fontcolors_rows[3] <- "#0000FF"
+ fontcolors_rows[5] <- "black"
  fontcolors_rows[4] <- "#0000FF"
- fontcolors_rows[5] <- "#0000FF"
- fontcolors_rows[3] <- "#DC143C"
- fontcolors_rows[7] <- "#0000FF"
- fontcolors_rows[8] <- "#0000FF"
-  fontcolors_rows[6] <- "#0000FF"
- # fontcolors_rows[5] <- "#0000FF"
- # fontcolors_rows[6] <- "#DC143C"
- # fontcolors_rows[7] <- "#DC143C"
- # fontcolors_rows[8] <- "#DC143C"
- # fontcolors_rows[9] <- "#DC143C"
- # fontcolors_rows[12] <- "#DC143C"
- # fontcolors_rows[14] <- "#DC143C"
+
+
 
 #heatmap
 h4 <- Heatmap(count.table.z, cluster_rows = T, column_labels = colnames(count.table.z), name = "Z-score", row_labels = rownames(count.table.z),
