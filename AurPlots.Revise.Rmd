@@ -114,7 +114,6 @@ boxplot_data <- boxplot_data %>%
 
 ```
 
-**II. Message: Metastatic vs. Primary Distribution Total Counts**
 
 ```{r}
 library(tidySummarizedExperiment)
@@ -123,6 +122,7 @@ se3 <- se3 %>%
   group_by(PRIMARY_METASTATIC_TUMOR)
 se3$.sample <- factor(se3$.sample, levels = unique(se3$.sample[order(se3$PRIMARY_METASTATIC_TUMOR)]))
 se3 <- se3[, -c(7:47)]
+
 
 ```
 
@@ -143,7 +143,6 @@ ggsave('boxplot_gene_exp.png', width = 10, height = 18)
 
 *Fig 1. The distribution of gene expression for every sample. There are no major outliers and median tends to be slightly higher in primary tumors as compared to metastatic tumors. These genes are normalized to account for gene length and are log transformed for better interpretation.*
 
-**III. Metastatic vs Primary Total Gene Counts between Body Site**
 
 ```{r}
 
@@ -187,8 +186,7 @@ ggsave('barplot_body_smaples.png', width = 8, height = 8)
 *Fig 3. A visual to show the number of samples with in each body site.  In blue are the body sites with highest number of samples, lymph nodes, brain and liver. Plut 39 samples for breast since it is the primary for every sample*
 
 
-
-**IV. Number of Metastatic samples per Subject.**
+#not used but still informative
 ```{r}
 # ggthemr("light")
 # barplot_data %>%
@@ -213,10 +211,8 @@ ggsave('barplot_body_smaples.png', width = 8, height = 8)
 #   
 
 ```
-**Fig. 4. The number of metastatic samples for each of the 39 subjects. In bold are the subjects with highest number of samples.**
+**Fig. 3b. The number of metastatic samples for each of the 39 subjects. In bold are the subjects with highest number of samples.**
 
-
-**V. PCA**
 
 ```{r}
 ggthemr("light")
@@ -228,7 +224,7 @@ ggsave('apcas.png', width = 8, height = 8)
 **Fig 4. PCA shows there are separate groups between metastatic and primary tumors.**
 
 
-DESEQ!!!!!
+
 ```{r diff, eval=TRUE, include=FALSE}
 #DESeq DE
 #using medain-of-ratio method to normalize
@@ -276,7 +272,7 @@ head(sigRes)
 ```
 
 
-**V. Volcano Plot**
+
 ```{r}
 select = c("GCAT","HBB", "WTT1-AS", "MYRF", "HBA2", "ALAS2", "CPS1", "PAX5", "MS4A1","PRKCZ","GGAT","NGEF","NPTX1","MRPL52","RN7SKP186","MS4A2", "ANAPC11", "CDC20", "ANAPC10")
 
@@ -298,10 +294,9 @@ EnhancedVolcano(toptable = sigRes,
 
 ggsave('volcano_plot.png', width = 15, height = 10)
 ```
-
 **Fig 5. Volcano plot shows p-value significance on y (0.05) and log fold change (either up or down regulated depending on positive or negative) on x. We are interested in genes high above dashed line and far from center line. **
 
-**VI. Heatmap**
+
 ```{r heatmap, echo=FALSE}
 #getting sample info
 DDSsample_info <- as.data.frame(colData(dds))
@@ -370,8 +365,6 @@ png("heatmap.png", res = 100, width = 2800, height = 1500)
 print(h2)
 dev.off()
 ```
-
-
 **Fig 6. This heat map is a visual representation of hierarchical cluster the samples with corresponding tumor types. We see that most metastatic tumors have more up regulated genes in the significant genes we picked as compared to primary tumors. Also see there is a smattering of metastatic that are not unregulated and more closley resemble the primary tumors.**
 
 
@@ -413,5 +406,5 @@ gseaplot(aurora_gse, geneSetID = 3, title = aurora_gse$Description[3])
 ggsave('Aurora_gsea.png', width = 15, height = 10)
 ```
 
-**Metastatic is downregulated 
+
 
