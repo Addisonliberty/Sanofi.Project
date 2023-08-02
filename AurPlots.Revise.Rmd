@@ -408,9 +408,9 @@ as.data.frame(aurora_gse)
 
 
 ```{r}
-gseaplot(aurora_gse, geneSetID = 3, title = aurora_gse$Description[3])
+gseaplot(aurora_gse, geneSetID = 4, title = aurora_gse$Description[4])
 ggsave('Aurora_gsea.png', width = 15, height = 10)
 ```
 
-
+**Fig 7. The gene set of antigen receptor-mediated signaling pathway is down regulated in metastatic to primary, meaning that this could cause more issues for the immune system to fight and recognize the tumor and contribute to the progression of the metastatic tumors..**
 

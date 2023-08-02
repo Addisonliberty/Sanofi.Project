@@ -376,7 +376,7 @@ png("heatmap_MET.png", res = 250, width = 4000, height = 2000)
 print(h4)
 dev.off()
 ```
-**Fig 6. Tend to be specific unregulated genes in esophagus vs bile. For example CDK5 is upregulted in bile duct cancers and not in esophagus. **
+**Fig 6. Tend to be specific unregulated genes in esophagus vs bile. For example CDK5 is upregulated in bile duct cancers and not in esophagus. **
 
 
 #GSEA
@@ -394,7 +394,7 @@ sigResall_gse <- sigResall_gse[,-1]
 ```
 
 ```{r}
-#gene list ordered by decending LFC
+#gene list ordered by descending LFC
 gene_list2 <- sigResall_gse$log2FoldChange
 names(gene_list2) <- rownames(sigResall_gse)
 gene_list2 <- na.omit(gene_list2)
@@ -410,11 +410,11 @@ met_gse <- gseGO(gene_list2,
                     OrgDb = "org.Hs.eg.db",
                     eps = 1e-300)
 
-as.data.frame(met_gse)
+new <- as.data.frame(met_gse)
 ```
 
 ```{r}
-gseaplot(met_gse, geneSetID = 5, title = met_gse$Description[5])
+gseaplot(met_gse, geneSetID = 102, title = met_gse$Description[102])
 ggsave('Met_gsea.png', width = 15, height = 10)
 ```
 
