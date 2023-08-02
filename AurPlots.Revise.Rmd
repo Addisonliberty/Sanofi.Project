@@ -222,7 +222,6 @@ ggsave('apcas.png', width = 8, height = 8)
 **Fig 4. PCA shows there are separate groups between metastatic and primary tumors.**
 
 
-
 ```{r diff, eval=TRUE, include=FALSE}
 #DESeq DE
 #using medain-of-ratio method to normalize
@@ -269,12 +268,20 @@ head(sigRes)
 # summary(sigRes_fil, alpha > 0.05)
 ```
 
-
+```{r}
+look <- resDESeq_names %>%
+ filter(!grepl("^ENSG", external_gene_name),
+        padj <= 0.0005,
+        log2FoldChange <= -2)
+```
 
 ```{r}
-select = c("GCAT","HBB", "WTT1-AS", "MYRF", "HBA2", "ALAS2", "CPS1", "PAX5", "MS4A1","PRKCZ","GGAT","NGEF","NPTX1","MRPL52","RN7SKP186","MS4A2", "ANAPC11", "CDC20", "ANAPC10")
+#select = c("GCAT","HBB", "WTT1-AS", "MYRF", "HBA2", "ALAS2", "CPS1", "PAX5", "MS4A1","PRKCZ","GGAT","NGEF","NPTX1","MRPL52","RN7SKP186","MS4A2", "ANAPC11", "CDC20", "ANAPC10")
 
-select2 = c("ANAPC11", "CDC20", "ANAPC10", "CDK4P1","PTGS2", "CDC37", "CDC34","CDCA5", "NLRP2","PPBP","PLAUR", "MCEMP1")
+#select2 = c("ANAPC11", "CDC20", "ANAPC10", "CDK4P1","PTGS2", "CDC37", "CDC34","CDCA5", "NLRP2","PPBP","PLAUR", "MCEMP1")
+
+select3 = c("ANAPC11", "CDC20", "ANAPC10", "CDC37", "CDC34", "CD1C", "CCR7")
+select4 = c("ANAPC11","CDC34", "CD1C", "CCR7")
 
 ggthemr("grape")
 EnhancedVolcano(toptable = sigRes,
@@ -282,7 +289,7 @@ EnhancedVolcano(toptable = sigRes,
                 y = "padj",
                 FCcutoff= .5,
                 lab = sigRes$external_gene_name,
-                selectLab = select2,
+                selectLab = select3,
                 boxedLabels = TRUE,
                 drawConnectors = TRUE,
                 widthConnectors = 1.0,
@@ -299,7 +306,7 @@ ggsave('volcano_plot.png', width = 15, height = 10)
 DDSsample_info <- as.data.frame(colData(dds))
 
 #getting genes
-genes.kept <- sigRes[sigRes$external_gene_name %in% select2, ]
+genes.kept <- sigRes[sigRes$external_gene_name %in% select4, ]
 genes.kept <- rownames(genes.kept)
 
 #getting counts/treatment/gene names situated
@@ -318,37 +325,39 @@ rownames(count.table) <- count.table$external_gene_name
 count.table <- count.table[,-104]
 count.table <- count.table[,-1]
 
-col_sams <- colnames(count.table.z)
-rows <- rownames(count.table.z)
+col_sams <- colnames(count.table)
+rows <- rownames(count.table)
 
-myCols <- c("Metastatic : SRR21068776", "Metastatic : SRR21068788","Metastatic : SRR21068667","Metastatic : SRR21068779","Primary : SRR21068825","Primary : SRR21068769")
-row_idx <- which(colnames(count.table.z) %in% myCols)
+myCols <- c("Metastatic : SRR21068776", "Metastatic : SRR21068781","Metastatic : SRR21068682","Metastatic : SRR21068772","Primary : SRR21068765","Primary : SRR21068641","Primary : SRR21068764","Primary : SRR21068782")
+#row_idx <- which(colnames(count.table.z) %in% myCols)
 
 
 fontcolors <- rep('grey', ncol(count.table.z))
-fontcolors[23] <- '#DC143C'
-fontcolors[53] <- "#DC143C"
-fontcolors[62] <- "#DC143C"
-fontcolors[46] <- "#0000FF"
-fontcolors[56] <- '#DC143C'
-fontcolors[94] <- "#0000FF"
+fontcolors[35] <- 'black'
+fontcolors[53] <- "black"
+fontcolors[57] <- "black"
+fontcolors[49] <- 'black'
+fontcolors[43] <- "#0000FF"
+fontcolors[6] <- "#0000FF"
+fontcolors[42] <- "#0000FF"
+fontcolors[58] <- "#0000FF"
 
 fontcolors_rows <- rep('black', nrow(count.table.z))
-fontcolors_rows[1] <- "#0000FF"
-fontcolors_rows[2] <- "#DC143C"
-fontcolors_rows[4] <- "#DC143C"
-fontcolors_rows[3] <- "#DC143C"
+fontcolors_rows[1] <- "black" 
+fontcolors_rows[2] <- "black"
+fontcolors_rows[3] <- "#0000FF"
+fontcolors_rows[4] <- "#0000FF"
 
 #heatmap z scores
 count.table.z <- t(apply(count.table, 1, scale))
 colnames(count.table.z) <- colnames(count.table)
-count.table.z.filtered <- count.table.z[, apply(count.table.z, 2, function(x) all(x > threshold_value))]
+#count.table.z.filtered <- count.table.z[, apply(count.table.z, 2, function(x) all(x > threshold_value))]
 
 #heatmap
 h2 <- Heatmap(count.table.z, 
               cluster_rows = T, 
               column_labels = col_sams, 
-              name = "Z-score", 
+              name = "Z-score",
               row_labels = rownames(count.table.z),
               column_names_gp = gpar(col = fontcolors, fontface = "bold",
                                      fontsize = "14"),
