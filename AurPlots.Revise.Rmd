@@ -22,6 +22,7 @@ library(ComplexHeatmap)
 library(EnhancedVolcano)
 library(clusterProfiler)
 library(org.Hs.eg.db)
+library(ggthemr)
 ```
 
 
@@ -117,13 +118,10 @@ boxplot_data <- boxplot_data %>%
 
 ```{r}
 library(tidySummarizedExperiment)
-
 se3 <- se3 %>%
   group_by(PRIMARY_METASTATIC_TUMOR)
 se3$.sample <- factor(se3$.sample, levels = unique(se3$.sample[order(se3$PRIMARY_METASTATIC_TUMOR)]))
 se3 <- se3[, -c(7:47)]
-
-
 ```
 
 ```{r}
@@ -276,7 +274,7 @@ head(sigRes)
 ```{r}
 select = c("GCAT","HBB", "WTT1-AS", "MYRF", "HBA2", "ALAS2", "CPS1", "PAX5", "MS4A1","PRKCZ","GGAT","NGEF","NPTX1","MRPL52","RN7SKP186","MS4A2", "ANAPC11", "CDC20", "ANAPC10")
 
-select2 = c("ANAPC11", "CDC20", "ANAPC10", "CDK4P1")
+select2 = c("ANAPC11", "CDC20", "ANAPC10", "CDK4P1","PTGS2", "CDC37", "CDC34","CDCA5", "NLRP2","PPBP","PLAUR", "MCEMP1")
 
 ggthemr("grape")
 EnhancedVolcano(toptable = sigRes,
@@ -288,8 +286,7 @@ EnhancedVolcano(toptable = sigRes,
                 boxedLabels = TRUE,
                 drawConnectors = TRUE,
                 widthConnectors = 1.0,
-                colConnectors = 'black',
-                col=c('black', 'black', 'black', 'blue3'))
+                colConnectors = 'black')
 
 
 ggsave('volcano_plot.png', width = 15, height = 10)

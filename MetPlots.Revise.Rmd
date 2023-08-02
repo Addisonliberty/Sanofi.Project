@@ -281,7 +281,7 @@ sigRes_all <- sigRes_all[,-1]
 ```{r}
 select = c("CDCA5","HMGA1", "BRI3BP", "UBE2S", "KIAA0903", "TSPAN5", "FGFR4", "GK5","GASK1A", "ADPRM","MED12L","MYH11","ACTG2", "PRDM8", "MED12L", "ZNF594", "PRDM8")
 
-#for aurora select_cool <- c("PTGS2", "CDC37", "CDC34","CDCA5", "NLRP2","PPBP","PLAUR", "MCEMP1")
+
 select_cool <- c("ACTG2","MED12L", "UBE2S", "CDCA5", "H2AX", "BIRC5", "TK1", "GINS2")
 ggthemr("grape")
 
@@ -421,6 +421,6 @@ as.data.frame(met_gse)
 
 ```{r}
 gseaplot(met_gse, geneSetID = 5, title = met_gse$Description[5])
-#ggsave('Met_gsea.png', width = 15, height = 10)
+ggsave('Met_gsea.png', width = 15, height = 10)
 ```
 
