@@ -421,6 +421,6 @@ as.data.frame(met_gse)
 
 ```{r}
 gseaplot(met_gse, geneSetID = 5, title = met_gse$Description[5])
-ggsave('Met_gsea.png', width = 15, height = 10)
+#ggsave('Met_gsea.png', width = 15, height = 10)
 ```
 
