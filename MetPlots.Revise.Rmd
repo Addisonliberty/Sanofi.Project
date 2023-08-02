@@ -417,4 +417,4 @@ new <- as.data.frame(met_gse)
 gseaplot(met_gse, geneSetID = 102, title = met_gse$Description[102])
 ggsave('Met_gsea.png', width = 15, height = 10)
 ```
-
+**Fig 6. Up regulation of genes in bile in this pathway and down regulated genes in bile in this pathways.** 
