@@ -193,7 +193,7 @@ plottingMETFilt %>%
          prim_loc %in% c("bile", "esophagus")) %>%
   ggplot(aes(x = prim_loc, y = gene_expression)) +
   geom_boxplot(position = "dodge") +
-  labs(x = "Gender", y = "Total Gene Expression (log/CPM)", color = "Tumor Type") +
+  labs(x = "Primary Body Site", y = "Total Gene Expression (log/CPM)", color = "Tumor Type") +
   ggtitle("Total Gene Expression Across Primary Tumor Locations")+
   geom_text(data = plottingMETFilt %>% 
               filter(!tumor %in% c("NA","Primary"),body == "liver",prim_loc %in% c("bile", "esophagus")) %>%
@@ -418,3 +418,8 @@ gseaplot(met_gse, geneSetID = 102, title = met_gse$Description[102])
 ggsave('Met_gsea.png', width = 15, height = 10)
 ```
 **Fig 6. Up regulation of genes in bile in this pathway and down regulated genes in bile in this pathways.** 
+
+
+Enrichment score is cumulative it keeps going up reaches max those genes are associated with that gene set and have highest positive log fold changes
+
+or maybe negative is not assoicative...
