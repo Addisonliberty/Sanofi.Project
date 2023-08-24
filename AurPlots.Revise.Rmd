@@ -23,6 +23,7 @@ library(EnhancedVolcano)
 library(clusterProfiler)
 library(org.Hs.eg.db)
 library(ggthemr)
+library(GSVA)
 ```
 
 
@@ -61,6 +62,7 @@ body_site <- colData(se)$body_site
 run <- colData(se)$Run
 table(patient, treatment, body_site, run)
 
+
 gene_info <- as.data.frame(rowData(se)@listData)
 assay_info <- as.data.frame(assay(se))
 sample_info <- as.data.frame(colData(se)@listData)
@@ -72,11 +74,18 @@ gene_info$external_gene_name <- ifelse(is.na(gene_info$external_gene_name), gene
 gene_info$external_gene_name <- ifelse(gene_info$external_gene_name == "", gene_info$GENEID, gene_info$external_gene_name)
 gene_info$external_gene_name <- ifelse(gene_info$external_gene_name == "Metazoa_SRP", "Metazoa_SRP.1", gene_info$external_gene_name)
 
+
+
 #dds object
+se <- se %>%
+  mutate(Body = ifelse(BODY_SITE %in% c("breast", "lymph node","brain","liver"), BODY_SITE, "other")) 
+#sample_info <- as.data.frame(colData(se)@listData)
 assays(se)$counts <- round(assays(se)$counts)
-dds <- DESeqDataSet(se, design = ~ PRIMARY_METASTATIC_TUMOR)
+dds <- DESeqDataSet(se, design = ~  submitted_subject_id + PRIMARY_METASTATIC_TUMOR)
 dds <- dds[, list]
 dds$PRIMARY_METASTATIC_TUMOR <- factor(dds$PRIMARY_METASTATIC_TUMOR, levels = c("Metastatic","Primary"))
+dds$submitted_subject_id <- factor(dds$submitted_subject_id)
+dds$Body<- factor(dds$Body)
 ```
 
 ```{r transform, eval=TRUE, include=FALSE}
@@ -115,13 +124,17 @@ boxplot_data <- boxplot_data %>%
 
 ```
 
-
 ```{r}
 library(tidySummarizedExperiment)
 se3 <- se3 %>%
   group_by(PRIMARY_METASTATIC_TUMOR)
 se3$.sample <- factor(se3$.sample, levels = unique(se3$.sample[order(se3$PRIMARY_METASTATIC_TUMOR)]))
 se3 <- se3[, -c(7:47)]
+
+
+se3 <- se3 %>%
+  mutate(Body = ifelse(BODY_SITE %in% c("breast", "lymph node","brain","liver"), BODY_SITE, "other")) 
+
 ```
 
 ```{r}
@@ -133,19 +146,39 @@ se3 %>%
   ggtitle("Distribution of Gene Expression per Sample ")+
   xlab("Sample") +
   ylab("Gene Expression (log, CPM)") +
-  labs(fill = "Tumor Type")+
-  coord_flip() 
+  labs(fill = "Tumor Type") +
+  theme(axis.text.x = element_text(angle = 90),
+         legend.title = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        plot.title = element_text(size = 20))
+  
 
-ggsave('boxplot_gene_exp.png', width = 10, height = 18)
+ggsave('boxplot_gene_exp.png', width = 25, height = 15)
 ```
 
 *Fig 1. The distribution of gene expression for every sample. There are no major outliers and median tends to be slightly higher in primary tumors as compared to metastatic tumors. These genes are normalized to account for gene length and are log transformed for better interpretation.*
+
+```{r}
+
+
+ggthemr(palette = "light")
+se3 %>%
+  ggplot(aes(x = counts, color = Body)) +
+  geom_density() +
+  ggtitle("Gene Counts per Body Site") +
+  xlab("Gene Count (CPM/log)")
+  theme(legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8))
+
+ggsave('density_plot_AUR.png', width = 7, height = 5)
+```
+
+*Fig 1.b Looking at gene counts for specific body type. *
 
 
 ```{r}
 
 boxplot_data$body_site <- factor(boxplot_data$body_site)
-
 ggthemr("grape")
 boxplot_data %>%
   ggplot(aes(x = body_site, y = gene_expression, fill = ifelse(body_site == "breast", "breast", "non-breast"))) +
@@ -159,8 +192,7 @@ boxplot_data %>%
               summarise(top = max(gene_expression), 
                         n=n()),
             aes(x= body_site, y=0, label= paste0("n = ", n)), 
-            size = 2.8, fontface = "bold", vjust = -2
-             )
+            size = 2.8, fontface = "bold", vjust = -2)
 
 ggsave('boxplot_body.png', width = 8, height = 8)
 
@@ -173,6 +205,7 @@ boxplot_data %>%
   filter(body_site != "breast") %>%
   ggplot(aes(x = body_site, fill = ifelse(body_site %in% c("lymph node", "brain", "liver"), "brain", "non-breast"))) +
   geom_bar() +
+  scale_y_continuous(labels = scales::comma, breaks = seq(0, 12, by = 2))+
   theme(axis.text.x = element_text(angle = 90)) +
   ggtitle("Number Samples Per Body Site (Metastatic Tumors Only)")+
   xlab("Metastatic Body Site") +
@@ -181,61 +214,121 @@ boxplot_data %>%
 
 ggsave('barplot_body_smaples.png', width = 8, height = 8)
 ```
-*Fig 3. A visual to show the number of samples with in each body site.  In blue are the body sites with highest number of samples, lymph nodes, brain and liver. Plut 39 samples for breast since it is the primary for every sample*
-
-
-#not used but still informative
-```{r}
-# ggthemr("light")
-# barplot_data %>%
-#   mutate(is_highlighted = ifelse(subject %in% c("AUR-AER6", "AUR-AFEA", "AUR-AFE9"), "Highlighted", "Not Highlighted")) %>%
-#   ggplot(aes(x = subject, fill = is_highlighted)) +
-#   geom_bar() +
-#   ggtitle("Number Metastatic Tumors per Subject")+
-#   xlab("Subject") +
-#   ylab("Number of Samples") +
-#   theme(
-#     legend.title = element_text(size = 5), 
-#     legend.position = "none",
-#     axis.text.x = element_text(angle = 90, margin = margin(t = 5)),
-#     axis.title.x = element_text(margin = margin(t = 10, b = 20)),
-#     axis.title.y = element_text(margin = margin( r = 10)),
-#     plot.title = element_text(hjust = 0.5),
-#     plot.caption.position = "panel" ,
-#     plot.caption = element_text(margin = margin(l = 60, r = 60)),
-#     plot.margin = unit(c(0.25, 0.2, 0.2, 0.25),"inches"))+
-#   scale_x_discrete(labels=c("AUR-AER6"=expression(bold("AUR-AER6")), "AUR-AFEA"=expression(bold("AUR-AFEA")),
-#                               "AUR-AFE9"=expression(bold("AUR-AFE9")), parse=TRUE))
-#   
-
-```
-**Fig. 3b. The number of metastatic samples for each of the 39 subjects. In bold are the subjects with highest number of samples.**
+**Fig 3. A visual to show the number of samples with in each body site.  In blue are the body sites with highest number of samples, lymph nodes, brain and liver. Plus 39 samples for breast since it is the primary for every sample.**
 
 
 ```{r}
 ggthemr("light")
-vsd <- vst(dds, blind = TRUE)
-p <- pca(assay(vsd), metadata = colData(vsd), removeVar = 0.1)
-biplot(p, colby = "PRIMARY_METASTATIC_TUMOR", lab = NULL, legendPosition = 'right', legendTitleSize = 8, legendLabSize = 8, title = "PCA of Primary vs Metastatic Tumors" )
-ggsave('apcas.png', width = 8, height = 8)
+barplot_data %>%
+  ggplot(aes(x = subject, fill = tumor)) +
+  geom_bar() +
+  ggtitle("Number Samples per Subject")+
+  xlab("Subject") +
+  ylab("Number of Samples") +
+  theme(
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    axis.text.x = element_text(angle = 90, margin = margin(t = 5)),
+    axis.title.x = element_text(margin = margin(t = 10, b = 20)),
+    axis.title.y = element_text(margin = margin( r = 10)),
+    plot.title = element_text(hjust = 0.5),
+    plot.caption.position = "panel" ,
+    plot.caption = element_text(margin = margin(l = 60, r = 60)),
+    plot.margin = unit(c(0.25, 0.2, 0.2, 0.25),"inches"))+
+  scale_x_discrete(labels=c("AUR-AER6"=expression(bold("AUR-AER6")), "AUR-AFEA"=expression(bold("AUR-AFEA")),
+                              "AUR-AFE9"=expression(bold("AUR-AFE9")), parse=TRUE)) +
+    scale_y_continuous(labels = scales::comma, breaks = seq(0, 10, by = 2))
+ggsave('num_sams_aurora.png', width = 12, height = 12)
 ```
+**Fig. 3b. The number of metastatic samples for each of the 39 subjects. In bold are the subjects with highest number of samples.**
+
+```{r}
+ggthemr("light")
+vsd <- vst(dds, blind = TRUE)
+
+#pca 1
+# p <- pca(assay(vsd), metadata = colData(vsd), removeVar = 0.1)
+# biplot(p, colby = "PRIMARY_METASTATIC_TUMOR", lab = NULL, legendPosition = 'right', legendTitleSize = 8, legendLabSize = 8, title = "PCA of Primary vs Metastatic Tumors" )
+
+
+#pca 2
+pcaPlot <- plotPCA(vsd, intgroup = c("PRIMARY_METASTATIC_TUMOR", "submitted_subject_id", "Body"), returnData = TRUE)
+percentVar <- round(100* attr(pcaPlot, "percentVar"))
+highlighted_points <- pcaPlot %>%
+  filter(PRIMARY_METASTATIC_TUMOR == "Metastatic" & PC1 < 0 & PC2 < -15)
+
+library(ggthemr)
+ggthemr("dust")
+ggplot(pcaPlot, aes(PC1,PC2)) + 
+  geom_point(size = 2, aes(col = PRIMARY_METASTATIC_TUMOR, shape = Body), show.legend = TRUE) +
+  stat_ellipse(data = subset(pcaPlot, Body != "breast"), aes(fill = Body), show.legend = FALSE)+
+  xlab(paste0("PC1: ", percentVar[1],"% variance"))+
+  ylab(paste0("PC2: ", percentVar[2],"% variance"))+
+  ggtitle("PCA of Primary vs Metastatic Tumors")+
+  geom_segment(data = highlighted_points,
+               aes(x = PC1, xend = PC1, y = PC2, yend = PC2 - 20),  
+               arrow = arrow(type = "closed", length = unit(.05, "inches")),
+               linejoin = "mitre", color = "black") +
+  geom_text(data = highlighted_points,
+            aes(label = Body, x = PC1, y = PC2 - 3), 
+            vjust = 10, fontface = "bold") +
+  theme_classic() +
+   geom_text(data = data.frame(label = c("liver (n = 12)", "lymph node (n = 9)", "other (n = 33)", "brain (n = 9)"),x = c(50, -25, -25, 60), y = c(70, 65, 50, -40)),
+            aes(x = x, y = y, label = label), vjust = 2, hjust = 0, fontface= "bold")+
+  guides(col = guide_legend("Tumor Type"), fill = "none",shape = guide_legend(override.aes = list(col = "black")))
+              
+ggsave('apcas.png', width = 10, height = 8)
+
+```
+
+```{r}
+pca_result <- prcomp(t(assay(vsd)), scale. = TRUE)
+
+# Get the rotated component scores
+rotated_scores <- pca_result$x
+sdev <- pca_result$sdev
+
+# Calculate the percentage of variation explained by each PC
+variance_explained <- (sdev^2) / sum(sdev^2) * 100
+
+# Create a data frame
+pca_scores <- data.frame(PC3 = rotated_scores[, 3],
+                         PC4 = rotated_scores[, 4],
+                         PRIMARY_METASTATIC_TUMOR = colData(vsd)$PRIMARY_METASTATIC_TUMOR)
+
+# Create a scatter plot of PC3 vs PC4
+ggplot(pca_scores, aes(x = PC3, y = PC4, color = PRIMARY_METASTATIC_TUMOR)) +
+  geom_point() +
+  labs(title = "PCA of Bile vs Esophagus Tumors (PC3 vs PC4)",
+       x = "PC3", y = "PC4") +
+   xlab(paste0("PC3: ", variance_explained[3],"% variance"))+
+  ylab(paste0("PC4: ", variance_explained[4],"% variance"))+
+  theme_minimal()
+
+```
+
 **Fig 4. PCA shows there are separate groups between metastatic and primary tumors.**
 
-
+#Differential Gene Expression
 ```{r diff, eval=TRUE, include=FALSE}
-#DESeq DE
+############wald based
 #using medain-of-ratio method to normalize
 #estimate size factor for dds
 dds = estimateSizeFactors(dds)
-
-#estimating dispersion
+# #estimating dispersion
 dds = estimateDispersions(dds)
-
-#test
+# #test
 dds = nbinomWaldTest(dds)
+##results and contrast
 contrast <- c("PRIMARY_METASTATIC_TUMOR", "Metastatic", "Primary")
 resDESeq = results(dds, contrast = contrast)
 
+contrast2 <- c("Body", "liver", "lymph node")
+resDESeq = results(dds, contrast = contrast2)
+
+############LRT
+dds_LRT = DESeq(dds, test = "LRT", reduced = ~PRIMARY_METASTATIC_TUMOR)
+resDESeq = results(dds_LRT)
 resDESeq <- resDESeq[order(resDESeq$padj),]
 head(resDESeq)
 #summary of <0.05 p-value
@@ -249,6 +342,7 @@ resDESeq_names <- left_join(resDESeq_names, gene_info, by = c("gene" = "GENEID")
 rownames(resDESeq_names) <- resDESeq_names$gene
 resDESeq_names <- resDESeq_names[,-1]
 
+
 #just sig genes
 padj.cutoff <- 0.05
 sigRes <- resDESeq %>%
@@ -256,44 +350,227 @@ sigRes <- resDESeq %>%
         filter(padj < padj.cutoff) %>%
         rownames_to_column(var = "gene")
 
+LFCRes <- resDESeq_names %>%
+        filter(log2FoldChange >= 1 | log2FoldChange <= -1) 
+
 #gene symbols in results table 
 sigRes <- left_join(sigRes, gene_info, by = c("gene" = "GENEID"))
 rownames(sigRes) <- sigRes$gene
 sigRes <- sigRes[,-1]
 
 head(sigRes)
-
-#filter for heatmap
-# sigRes_fil <- sigRes[(sigRes$baseMean > 150) & abs(sigRes$log2FoldChange > 2),]
-# summary(sigRes_fil, alpha > 0.05)
 ```
-
+#GSEA
+#gene list is look_sig these are DEG
 ```{r}
-look <- resDESeq_names %>%
+look_sig <- resDESeq_names %>%
  filter(!grepl("^ENSG", external_gene_name),
-        padj <= 0.0005,
-        log2FoldChange <= -2)
+        padj <= 0.005,
+        log2FoldChange <= -1 | log2FoldChange >= 1) %>%
+  rownames_to_column(var = "gene") %>%
+  mutate(gene = str_replace(gene,"\\..*$", ""))
+
+look_all <- resDESeq_names %>%
+ filter(!grepl("^ENSG", external_gene_name)) %>%
+  rownames_to_column(var = "gene") %>%
+  mutate(gene = str_replace(gene,"\\..*$", ""))
 ```
 
 ```{r}
-#select = c("GCAT","HBB", "WTT1-AS", "MYRF", "HBA2", "ALAS2", "CPS1", "PAX5", "MS4A1","PRKCZ","GGAT","NGEF","NPTX1","MRPL52","RN7SKP186","MS4A2", "ANAPC11", "CDC20", "ANAPC10")
+#get list of all hallmark gene sets
+library(msigdbr)
+hs_msigdb_df <- msigdbr(species = "Homo sapiens")
+head(hs_msigdb_df)
 
-#select2 = c("ANAPC11", "CDC20", "ANAPC10", "CDK4P1","PTGS2", "CDC37", "CDC34","CDCA5", "NLRP2","PPBP","PLAUR", "MCEMP1")
+#keep only hallmark gene sets
+hs_hallmark_df <- hs_msigdb_df %>%
+  dplyr::filter(
+    gs_cat == "H", # This is to filter only to the H curated gene sets
+  )
+head(hs_hallmark_df)
+```
 
-select3 = c("ANAPC11", "CDC20", "ANAPC10", "CDC37", "CDC34", "CD1C", "CCR7")
-select4 = c("ANAPC11","CDC34", "CD1C", "CCR7", "TK1")
+```{r}
+entrez_vector <- mapIds(
+  # Replace with annotation package for the organism relevant to your data
+  org.Hs.eg.db,
+  # The vector of gene identifiers we want to map
+  keys = look_all$gene,
+  # Replace with the type of gene identifiers in your data
+  keytype = "ENSEMBL",
+  # Replace with the type of gene identifiers you would like to map to
+  column = "ENTREZID",
+  # In the case of 1:many mappings, return the
+  # first one. This is default behavior!
+  multiVals = "first"
+)
+
+#get df of ensemble and entrez ids
+gene_key_df <- data.frame(
+  ensembl_id = names(entrez_vector),
+  entrez_id = entrez_vector,
+  stringsAsFactors = FALSE
+) %>%
+  dplyr::filter(!is.na(entrez_id))
+
+#adding gene_key_df to our dataframe of diff expressed genes and universe
+
+universe_df <- gene_key_df %>%
+  dplyr::left_join(look_all, by = c("ensembl_id" = "gene"))
+
+diff_df <- look_sig %>%
+   dplyr::left_join(gene_key_df, by = c("gene" = "ensembl_id"))%>%
+  dplyr::filter(!is.na(entrez_id))
+```
+
+```{r}
+ORA_results <- enricher(
+  gene = diff_df$entrez_id,
+  pvalueCutoff = 0.1,
+  pAdjustMethod = "BH",
+  universe = universe_df$entrez_id,
+  TERM2GENE = dplyr::select(
+    hs_hallmark_df,
+    gs_name,
+    human_entrez_gene
+  )
+)
+ora_results <- data.frame(ORA_results@result)
+
+#FDR cutoff
+ora_results %>%
+  dplyr::filter(p.adjust < 0.1)
+
+barplot(ORA_results, showCategory = 10)
+
+```
+
+
+#GSVA
+```{r}
+#list of all genes in the needed gene sets
+gene_sets <- ora_results$ID
+#totlist of genesets
+total_genelist <- hs_hallmark_df %>%
+  filter(gs_name %in% gene_sets)
+
+#get list for gsva
+hallmarks_list <- split(
+  total_genelist$entrez_gene, # The genes we want split into pathways
+  total_genelist$gs_name # The pathways made as the higher levels of the list
+)
+
+#get vst expression
+vst_df <- assay(vsd) %>%
+  as.data.frame() %>% # Make into a data frame
+  tibble::rownames_to_column("ensembl_id") %>%
+  mutate(ensembl_id = str_replace(ensembl_id,"\\..*$", ""))
+
+
+mapped_df <- gene_key_df %>%
+  dplyr::inner_join(vst_df, by = "ensembl_id")
+```
+
+```{r}
+# First let's determine the gene means
+gene_means <- rowMeans(mapped_df %>% dplyr::select(-ensembl_id, -entrez_id))
+
+# Let's add this as a column in our `mapped_df`.
+mapped_df <- mapped_df %>%
+  # Add gene_means as a column called gene_means
+  dplyr::mutate(gene_means) %>%
+  # Reorder the columns so `gene_means` column is upfront
+  dplyr::select(ensembl_id, entrez_id, gene_means, dplyr::everything())
+
+filtered_mapped_df <- mapped_df %>%
+  # Sort so that the highest mean expression values are at the top
+  dplyr::arrange(dplyr::desc(gene_means)) %>%
+  # Filter out the duplicated rows using `dplyr::distinct()`
+  dplyr::distinct(entrez_id, .keep_all = TRUE)
+
+sum(duplicated(filtered_mapped_df$entrez_id))
+
+filtered_mapped_matrix <- filtered_mapped_df %>%
+  # GSVA can't the Ensembl IDs so we should drop this column as well as the means
+  dplyr::select(-ensembl_id, -gene_means) %>%
+  # We need to store our gene identifiers as row names
+  tibble::column_to_rownames("entrez_id") %>%
+  # Now we can convert our object into a matrix
+  as.matrix()
+```
+
+```{r}
+gsva_results <- gsva(
+  filtered_mapped_matrix,
+  hallmarks_list,
+  method = "gsva",
+  # Appropriate for our vst transformed data
+  kcdf = "Gaussian",
+  # Minimum gene set size
+  min.sz = 15,
+  # Maximum gene set size
+  max.sz = 500,
+  # Compute Gaussian-distributed scores
+  mx.diff = TRUE,
+  # Don't print out the progress bar
+  verbose = FALSE
+)
+head(gsva_results)
+```
+
+```{r}
+#body site and primary or met for heatmap
+annot_df <- sample_info %>%
+  dplyr::select(Run, PRIMARY_METASTATIC_TUMOR, Body) %>%
+  column_to_rownames("Run")
+
+annot_df <- annot_df[order(annot_df$PRIMARY_METASTATIC_TUMOR), ]
+
+#for liver and lymph
+# annot_df <- annot_df %>%
+#   select(Body) %>%
+#   filter(Body %in% c("liver", "lymph node")) %>%
+#   arrange(Body)
+
+#get order of columns
+names <- rownames(annot_df)
+
+#reorder matrix
+gsva_results_order <- gsva_results[,names]
+```
+
+```{r}
+
+pheatmap<-pheatmap::pheatmap(
+  gsva_results_order,
+  annotation_col = annot_df, # Add metadata labels!
+  show_colnames = FALSE, # Don't show sample labels
+  fontsize_row = 10,
+  cluster_col = F,
+  main = "Heatmap of Samples and Gene Sets"
+)
+
+#ggsave('gsva_heatmap.png', width = 15, height = 10)
+
+png("heatmap.png", res = 100, width = 2000, height = 1000)
+print(pheatmap)
+dev.off()
+```
+
+
+```{r}
+select4 = c("")
 
 ggthemr("grape")
-EnhancedVolcano(toptable = sigRes,
+EnhancedVolcano(toptable = resDESeq_names,
                 x = "log2FoldChange",
                 y = "padj",
                 FCcutoff= 1,
-                lab = sigRes$external_gene_name,
-                selectLab = select4,
-                boxedLabels = TRUE,
-                drawConnectors = TRUE,
-                widthConnectors = 1.0,
-                colConnectors = 'black')
+                pCutoff = 0.005,
+                lab = resDESeq_names$external_gene_name,
+                selectLab = select4)
+
+
 
 
 ggsave('volcano_plot.png', width = 15, height = 10)
@@ -301,6 +578,8 @@ ggsave('volcano_plot.png', width = 15, height = 10)
 **Fig 5. Volcano plot shows p-value significance on y (0.05) and log fold change (either up or down regulated depending on positive or negative) on x. We are interested in genes high above dashed line and far from center line. **
 
 
+
+#didnt use theses next two figures
 ```{r heatmap, echo=FALSE}
 #getting sample info
 DDSsample_info <- as.data.frame(colData(dds))
@@ -373,8 +652,6 @@ dev.off()
 ```
 **Fig 6. This heat map is a visual representation of hierarchical cluster the samples with corresponding tumor types. We see that most metastatic tumors have more up regulated genes in the significant genes we picked as compared to primary tumors. Also see there is a smattering of metastatic that are not unregulated and more closley resemble the primary tumors.**
 
-
-GSEA
 ```{r}
 #ordered results table
 
@@ -405,7 +682,6 @@ aurora_gse <- gseGO(gene_list,
 as.data.frame(aurora_gse)
 
 ```
-
 
 ```{r}
 gseaplot(aurora_gse, geneSetID = 4, title = aurora_gse$Description[4])
