@@ -689,4 +689,3 @@ ggsave('Aurora_gsea.png', width = 15, height = 10)
 ```
 
 **Fig 7. The gene set of antigen receptor-mediated signaling pathway is down regulated in metastatic to primary, meaning that this could cause more issues for the immune system to fight and recognize the tumor and contribute to the progression of the metastatic tumors. Most of the genes in the geneset have negative log fold changes at end of ranked list. RSE is cumulative.**
-
